@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classroom Timetable Generator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+```
+<header>
+    <div class="header-content">
+        <div class="logo">CT</div>
+        <h1>Classroom Timetable Generator</h1>
+        <p>Smart Scheduling Using Greedy Graph Coloring</p>
+    </div>
+</header>
+
+<main>
+
+    <section class="intro">
+        <h2>Welcome to Smart Timetable Scheduling</h2>
+        <p>
+            Add your subjects, define scheduling conflicts, and generate
+            a timetable automatically using the Greedy Graph Coloring algorithm.
+        </p>
+    </section>
+
+    <section class="card">
+
+        <div class="section-heading">
+            <span class="step-number">1</span>
+            <div>
+                <h2>Add Subjects</h2>
+                <p>Enter the subjects you want to schedule.</p>
+            </div>
+        </div>
+
+        <form id="subjectForm">
+            <label for="subjectInput">Subject Name</label>
+
+            <div class="input-group">
+                <input
+                    type="text"
+                    id="subjectInput"
+                    placeholder="Example: Mathematics"
+                    maxlength="60"
+                    required
+                >
+
+                <button type="submit" class="primary-btn">
+                    + Add Subject
+                </button>
+            </div>
+        </form>
+
+        <div class="list-heading">
+            <h3>Subject List</h3>
+            <span id="subjectCount" class="count-badge">0 subjects</span>
+        </div>
+
+        <ul id="subjectList" class="item-list"></ul>
+
+    </section>
+
+    <section class="card">
+
+        <div class="section-heading">
+            <span class="step-number">2</span>
+            <div>
+                <h2>Define Conflicts</h2>
+                <p>
+                    Connect two subjects if they cannot be scheduled
+                    in the same period.
+                </p>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="subject1">First Subject</label>
+            <select id="subject1">
+                <option value="">Select first subject</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="subject2">Second Subject</label>
+            <select id="subject2">
+                <option value="">Select second subject</option>
+            </select>
+        </div>
+
+        <button type="button" id="addConflictBtn" class="primary-btn">
+            + Add Conflict
+        </button>
+
+        <div class="list-heading">
+            <h3>Conflict List</h3>
+            <span id="conflictCount" class="count-badge">0 conflicts</span>
+        </div>
+
+        <ul id="conflictList" class="item-list"></ul>
+
+    </section>
+
+    <section class="card">
+
+        <div class="section-heading">
+            <span class="step-number">3</span>
+            <div>
+                <h2>Graph Representation</h2>
+                <p>
+                    Each circle represents a subject. Each line represents
+                    a conflict between two subjects.
+                </p>
+            </div>
+        </div>
+
+        <div class="graph-container">
+            <svg id="graph" viewBox="0 0 700 380"
+                 role="img" aria-label="Subject conflict graph">
+            </svg>
+        </div>
+
+        <p class="graph-note">
+            Vertices = Subjects &nbsp; | &nbsp; Edges = Conflicts
+        </p>
+
+    </section>
+
+    <section class="card">
+
+        <div class="section-heading">
+            <span class="step-number">4</span>
+            <div>
+                <h2>Generate Timetable</h2>
+                <p>
+                    Use Greedy Graph Coloring to assign periods
+                    without scheduling conflicting subjects together.
+                </p>
+            </div>
+        </div>
+
+        <div class="settings">
+            <label for="periodStart">First Period Starts At</label>
+            <input type="time" id="periodStart" value="09:00">
+
+            <label for="periodDuration">Period Duration</label>
+            <select id="periodDuration">
+                <option value="45">45 minutes</option>
+                <option value="50">50 minutes</option>
+                <option value="60" selected>60 minutes</option>
+                <option value="90">90 minutes</option>
+            </select>
+
+            <label for="breakDuration">Break Between Periods</label>
+            <select id="breakDuration">
+                <option value="0">No break</option>
+                <option value="5" selected>5 minutes</option>
+                <option value="10">10 minutes</option>
+                <option value="15">15 minutes</option>
+            </select>
+        </div>
+
+        <button type="button" id="generateBtn" class="generate-btn">
+            Generate Timetable
+        </button>
+
+        <button type="button" id="sampleBtn" class="secondary-btn">
+            Load Sample Data
+        </button>
+
+        <button type="button" id="resetBtn" class="danger-btn">
+            Reset Project
+        </button>
+
+        <div id="message" class="message" role="status" aria-live="polite"></div>
+
+        <div id="timetable"></div>
+
+        <div id="summary" class="summary"></div>
+
+    </section>
+
+    <section class="card information-card">
+
+        <h2>How the Algorithm Works</h2>
+
+        <div class="algorithm-steps">
+            <div class="algorithm-step">
+                <span>1</span>
+                <p>Take a subject from the list.</p>
+            </div>
+
+            <div class="algorithm-step">
+                <span>2</span>
+                <p>Check the periods assigned to its neighboring subjects.</p>
+            </div>
+
+            <div class="algorithm-step">
+                <span>3</span>
+                <p>Assign the first available period.</p>
+            </div>
+
+            <div class="algorithm-step">
+                <span>4</span>
+                <p>Repeat until every subject has a period.</p>
+            </div>
+        </div>
+
+        <p class="note">
+            Note: This prototype models conflicts between subjects.
+            It does not yet handle actual teacher availability, classroom
+            capacity, student groups, or lunch-break scheduling constraints.
+        </p>
+
+    </section>
+
+</main>
+
+<footer>
+    <p>Advanced Graph Algorithms Project</p>
+    <p>Classroom Timetable Generator | Greedy Graph Coloring</p>
+</footer>
+
+<script src="script.js"></script>
+```
+
+</body>
+</html>
+
+
