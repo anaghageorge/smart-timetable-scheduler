@@ -4,8 +4,8 @@
 // 1. DATA STORAGE (Synced with MongoDB)
 // ========================================
 
-let subjects = []; // Stores objects: { _id, name }
-let conflicts = []; // Stores objects: { _id, subject1, subject2 }
+let subjects = []; 
+let conflicts = []; 
 let latestColors = null;
 
 const COLORS = [
@@ -189,7 +189,7 @@ function updateDropdowns() {
 
         subjects.forEach(function (subject) {
             const option = document.createElement("option");
-            option.value = subject._id; // Using MongoDB _id
+            option.value = subject._id;
             option.textContent = subject.name;
             select.appendChild(option);
         });
@@ -457,10 +457,10 @@ function greedyColoring() {
 }
 
 // ========================================
-// 15. GENERATE TIMETABLE
+// 15. GENERATE & SAVE TIMETABLE
 // ========================================
 
-generateBtn.addEventListener("click", function () {
+generateBtn.addEventListener("click", async function () {
     if (subjects.length === 0) {
         clearTimetable();
         showMessage("Please add at least one subject first.", "error");
@@ -469,7 +469,31 @@ generateBtn.addEventListener("click", function () {
 
     const colors = greedyColoring();
     displayTimetable(colors);
-    showMessage("Timetable generated successfully!");
+
+    const numberOfPeriods = Math.max(...Array.from(colors.values())) + 1;
+    const timetableObj = {};
+    for (let i = 0; i < numberOfPeriods; i++) {
+        timetableObj[i + 1] = [];
+    }
+    colors.forEach(function (period, subjectName) {
+        timetableObj[period + 1].push(subjectName);
+    });
+
+    try {
+        await fetch("/api/saved-timetables", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                timetable: timetableObj,
+                totalSubjects: subjects.length,
+                totalPeriods: numberOfPeriods
+            })
+        });
+        showMessage("Timetable generated and saved to database successfully!");
+    } catch (err) {
+        console.error("Error saving timetable:", err);
+        showMessage("Timetable generated, but failed to save to database.", "error");
+    }
 });
 
 // ========================================
@@ -599,7 +623,6 @@ function displaySummary(colors, numberOfPeriods) {
 
 sampleBtn.addEventListener("click", async function () {
     try {
-        // Post sample subjects and conflicts to the database via API
         const sampleSubjects = ["Mathematics", "DBMS", "Operating Systems", "Python"];
         
         for (const name of sampleSubjects) {
@@ -612,7 +635,6 @@ sampleBtn.addEventListener("click", async function () {
 
         await loadDataFromDatabase();
 
-        // Find IDs to add sample conflicts
         const m = subjects.find(s => s.name === "Mathematics")?._id;
         const d = subjects.find(s => s.name === "DBMS")?._id;
         const o = subjects.find(s => s.name === "Operating Systems")?._id;
@@ -654,7 +676,6 @@ resetBtn.addEventListener("click", async function () {
     if (!confirmed) return;
 
     try {
-        // Delete all current subjects (which cascade-deletes conflicts in backend)
         for (const subject of subjects) {
             await fetch(`/api/subjects/${subject._id}`, {
                 method: "DELETE"

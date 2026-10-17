@@ -60,6 +60,19 @@ const conflictSchema = new mongoose.Schema({
 const Conflict = mongoose.model("Conflict", conflictSchema);
 
 // ================================
+// SAVED TIMETABLE SCHEMA
+// ================================
+
+const savedTimetableSchema = new mongoose.Schema({
+  timetable: { type: Object, required: true },
+  totalSubjects: { type: Number, required: true },
+  totalPeriods: { type: Number, required: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const SavedTimetable = mongoose.model("SavedTimetable", savedTimetableSchema);
+
+// ================================
 // HEALTH CHECK API
 // ================================
 
@@ -240,67 +253,27 @@ app.delete("/api/conflicts/:id", async (req, res) => {
 });
 
 // ================================
-// GENERATE TIMETABLE
-// USING GREEDY GRAPH COLORING
+// SAVED TIMETABLES APIs
 // ================================
 
-app.get("/api/timetable", async (req, res) => {
+app.get("/api/saved-timetables", async (req, res) => {
   try {
-    const subjects = await Subject.find().sort({ name: 1 });
-    const conflicts = await Conflict.find();
+    const list = await SavedTimetable.find().sort({ createdAt: -1 });
+    res.json(list);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
-    // Store the period assigned to each subject
-    const colors = {};
-
-    // Assign periods using Greedy Graph Coloring
-    for (const subject of subjects) {
-      const unavailable = new Set();
-
-      // Find periods used by conflicting subjects
-      for (const conflict of conflicts) {
-        if (
-          conflict.subject1 === subject.name &&
-          colors[conflict.subject2] !== undefined
-        ) {
-          unavailable.add(colors[conflict.subject2]);
-        }
-
-        if (
-          conflict.subject2 === subject.name &&
-          colors[conflict.subject1] !== undefined
-        ) {
-          unavailable.add(colors[conflict.subject1]);
-        }
-      }
-
-      // Choose the smallest available period number
-      let color = 0;
-
-      while (unavailable.has(color)) {
-        color++;
-      }
-
-      colors[subject.name] = color;
-    }
-
-    // Group subjects by their assigned periods
-    const timetable = {};
-
-    for (const subject of subjects) {
-      const period = colors[subject.name] + 1;
-
-      if (!timetable[period]) {
-        timetable[period] = [];
-      }
-
-      timetable[period].push(subject.name);
-    }
-
-    res.json({
+app.post("/api/saved-timetables", async (req, res) => {
+  try {
+    const { timetable, totalSubjects, totalPeriods } = req.body;
+    const saved = await SavedTimetable.create({
       timetable,
-      totalSubjects: subjects.length,
-      totalPeriods: Object.keys(timetable).length,
+      totalSubjects,
+      totalPeriods,
     });
+    res.status(201).json(saved);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
