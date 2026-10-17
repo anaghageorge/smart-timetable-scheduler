@@ -50,6 +50,9 @@ const timetable = document.getElementById("timetable");
 const message = document.getElementById("message");
 const summary = document.getElementById("summary");
 
+const viewSavedBtn = document.getElementById("viewSavedBtn");
+const savedTimetablesList = document.getElementById("savedTimetablesList");
+
 // ========================================
 // 3. SHOW MESSAGES
 // ========================================
@@ -618,7 +621,64 @@ function displaySummary(colors, numberOfPeriods) {
 }
 
 // ========================================
-// 19. LOAD SAMPLE DATA BUTTON
+// 19. VIEW SAVED TIMETABLES FROM DATABASE
+// ========================================
+
+if (viewSavedBtn) {
+    viewSavedBtn.addEventListener("click", async function () {
+        try {
+            savedTimetablesList.replaceChildren();
+            showMessage("Fetching saved timetables from MongoDB...");
+
+            const response = await fetch("/api/saved-timetables");
+            const data = await response.json();
+
+            if (!response.ok || data.length === 0) {
+                showMessage("No saved timetables found in the database.", "error");
+                return;
+            }
+
+            const heading = document.createElement("h3");
+            heading.textContent = "Saved Timetables History (" + data.length + ")";
+            savedTimetablesList.appendChild(heading);
+
+            data.forEach((item, index) => {
+                const card = document.createElement("div");
+                card.className = "period-card";
+                card.style.marginTop = "10px";
+                card.style.border = "1px solid #cbd5e1";
+
+                const title = document.createElement("h4");
+                title.textContent = `Saved Schedule #${data.length - index} — (${item.totalSubjects} Subjects, ${item.totalPeriods} Periods)`;
+                
+                const dateText = document.createElement("p");
+                dateText.style.fontSize = "12px";
+                dateText.style.color = "#64748b";
+                dateText.textContent = "Created on: " + new Date(item.createdAt).toLocaleString();
+
+                card.append(title, dateText);
+
+                for (const [periodNum, subList] of Object.entries(item.timetable)) {
+                    if (subList.length > 0) {
+                        const pTag = document.createElement("p");
+                        pTag.innerHTML = `<strong>Period ${periodNum}:</strong> ${subList.join(", ")}`;
+                        card.appendChild(pTag);
+                    }
+                }
+
+                savedTimetablesList.appendChild(card);
+            });
+
+            showMessage("Loaded all saved timetables successfully!");
+        } catch (err) {
+            console.error("Error fetching saved timetables:", err);
+            showMessage("Failed to load saved timetables.", "error");
+        }
+    });
+}
+
+// ========================================
+// 20. LOAD SAMPLE DATA BUTTON
 // ========================================
 
 sampleBtn.addEventListener("click", async function () {
@@ -665,7 +725,7 @@ sampleBtn.addEventListener("click", async function () {
 });
 
 // ========================================
-// 20. RESET PROJECT BUTTON
+// 21. RESET PROJECT BUTTON
 // ========================================
 
 resetBtn.addEventListener("click", async function () {
@@ -691,7 +751,7 @@ resetBtn.addEventListener("click", async function () {
 });
 
 // ========================================
-// 21. INITIALIZE PAGE ON LOAD
+// 22. INITIALIZE PAGE ON LOAD
 // ========================================
 
 loadDataFromDatabase();
