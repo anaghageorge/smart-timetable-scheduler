@@ -1,19 +1,13 @@
 "use strict";
 
 // ========================================
-// 1. DATA STORAGE
+// 1. DATA STORAGE (Synced with MongoDB)
 // ========================================
 
-// Subjects are stored as strings.
-let subjects = [];
-
-// Each conflict is stored as a pair of subject names.
-let conflicts = [];
-
-// Store the latest generated result.
+let subjects = []; // Stores objects: { _id, name }
+let conflicts = []; // Stores objects: { _id, subject1, subject2 }
 let latestColors = null;
 
-// Colors used to display graph vertices and periods.
 const COLORS = [
     "#3157d5",
     "#059669",
@@ -76,10 +70,34 @@ function clearTimetable() {
 }
 
 // ========================================
-// 5. ADD A SUBJECT
+// 5. FETCH & LOAD DATA FROM MONGODB
 // ========================================
 
-subjectForm.addEventListener("submit", function (event) {
+async function loadDataFromDatabase() {
+    try {
+        const [subRes, confRes] = await Promise.all([
+            fetch("/api/subjects"),
+            fetch("/api/conflicts")
+        ]);
+
+        if (subRes.ok) subjects = await subRes.json();
+        if (confRes.ok) conflicts = await confRes.json();
+
+        updateSubjectList();
+        updateDropdowns();
+        updateConflictList();
+        drawGraph();
+    } catch (error) {
+        console.error("Failed to load data from database:", error);
+        showMessage("Error connecting to database.", "error");
+    }
+}
+
+// ========================================
+// 6. ADD A SUBJECT
+// ========================================
+
+subjectForm.addEventListener("submit", async function (event) {
     event.preventDefault();
 
     const name = subjectInput.value.trim();
@@ -89,30 +107,33 @@ subjectForm.addEventListener("submit", function (event) {
         return;
     }
 
-    const alreadyExists = subjects.some(
-        subject => subject.toLowerCase() === name.toLowerCase()
-    );
+    try {
+        const response = await fetch("/api/subjects", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name })
+        });
 
-    if (alreadyExists) {
-        showMessage("This subject already exists.", "error");
-        return;
+        const data = await response.json();
+
+        if (!response.ok) {
+            showMessage(data.error || "Failed to add subject.", "error");
+            return;
+        }
+
+        subjectInput.value = "";
+        subjectInput.focus();
+
+        await loadDataFromDatabase();
+        clearTimetable();
+        showMessage(name + " added and saved to database successfully!");
+    } catch (error) {
+        showMessage("Server error while adding subject.", "error");
     }
-
-    subjects.push(name);
-
-    updateSubjectList();
-    updateDropdowns();
-    drawGraph();
-    clearTimetable();
-
-    subjectInput.value = "";
-    subjectInput.focus();
-
-    showMessage(name + " added successfully!");
 });
 
 // ========================================
-// 6. DISPLAY SUBJECT LIST
+// 7. DISPLAY SUBJECT LIST
 // ========================================
 
 function updateSubjectList() {
@@ -132,8 +153,8 @@ function updateSubjectList() {
     subjects.forEach(function (subject) {
         const li = document.createElement("li");
 
-        const name = document.createElement("span");
-        name.textContent = subject;
+        const nameSpan = document.createElement("span");
+        nameSpan.textContent = subject.name;
 
         const removeButton = document.createElement("button");
         removeButton.type = "button";
@@ -141,16 +162,16 @@ function updateSubjectList() {
         removeButton.textContent = "Remove";
 
         removeButton.addEventListener("click", function () {
-            removeSubject(subject);
+            removeSubject(subject._id, subject.name);
         });
 
-        li.append(name, removeButton);
+        li.append(nameSpan, removeButton);
         subjectList.appendChild(li);
     });
 }
 
 // ========================================
-// 7. UPDATE SUBJECT DROPDOWNS
+// 8. UPDATE SUBJECT DROPDOWNS
 // ========================================
 
 function updateDropdowns() {
@@ -168,90 +189,89 @@ function updateDropdowns() {
 
         subjects.forEach(function (subject) {
             const option = document.createElement("option");
-            option.value = subject;
-            option.textContent = subject;
+            option.value = subject._id; // Using MongoDB _id
+            option.textContent = subject.name;
             select.appendChild(option);
         });
 
-        if (subjects.includes(previousValue)) {
+        if (subjects.some(s => s._id === previousValue)) {
             select.value = previousValue;
         }
     });
 }
 
 // ========================================
-// 8. REMOVE A SUBJECT
+// 9. REMOVE A SUBJECT
 // ========================================
 
-function removeSubject(name) {
-    subjects = subjects.filter(subject => subject !== name);
+async function removeSubject(id, name) {
+    try {
+        const response = await fetch(`/api/subjects/${id}`, {
+            method: "DELETE"
+        });
 
-    // Remove every conflict involving the deleted subject.
-    conflicts = conflicts.filter(
-        conflict => conflict[0] !== name && conflict[1] !== name
-    );
+        if (!response.ok) {
+            showMessage("Failed to remove subject.", "error");
+            return;
+        }
 
-    updateSubjectList();
-    updateDropdowns();
-    updateConflictList();
-    drawGraph();
-    clearTimetable();
-
-    showMessage(name + " and its conflicts have been removed.");
+        await loadDataFromDatabase();
+        clearTimetable();
+        showMessage(name + " and its conflicts have been removed.");
+    } catch (error) {
+        showMessage("Server error while deleting subject.", "error");
+    }
 }
 
 // ========================================
-// 9. ADD A CONFLICT / GRAPH EDGE
+// 10. ADD A CONFLICT
 // ========================================
 
-addConflictBtn.addEventListener("click", function () {
-    const first = subject1.value;
-    const second = subject2.value;
+addConflictBtn.addEventListener("click", async function () {
+    const firstId = subject1.value;
+    const secondId = subject2.value;
 
-    if (!first || !second) {
+    if (!firstId || !secondId) {
         showMessage("Please select both subjects.", "error");
         return;
     }
 
-    if (first === second) {
-        showMessage(
-            "A subject cannot have a conflict with itself.",
-            "error"
-        );
+    if (firstId === secondId) {
+        showMessage("A subject cannot have a conflict with itself.", "error");
         return;
     }
 
-    const alreadyExists = conflicts.some(function (conflict) {
-        return (
-            (conflict[0] === first && conflict[1] === second) ||
-            (conflict[0] === second && conflict[1] === first)
-        );
-    });
+    try {
+        const response = await fetch("/api/conflicts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ subject1: firstId, subject2: secondId })
+        });
 
-    if (alreadyExists) {
-        showMessage("This conflict has already been added.", "error");
-        return;
+        const data = await response.json();
+
+        if (!response.ok) {
+            showMessage(data.error || "Failed to add conflict.", "error");
+            return;
+        }
+
+        await loadDataFromDatabase();
+        clearTimetable();
+        showMessage("Conflict added and saved successfully.");
+    } catch (error) {
+        showMessage("Server error while adding conflict.", "error");
     }
-
-    conflicts.push([first, second]);
-
-    updateConflictList();
-    drawGraph();
-    clearTimetable();
-
-    showMessage("Conflict added between " + first + " and " + second + ".");
 });
 
 // ========================================
-// 10. DISPLAY CONFLICT LIST
+// 11. DISPLAY CONFLICT LIST
 // ========================================
 
 function updateConflictList() {
     conflictList.replaceChildren();
 
     conflictCount.textContent =
-        conflicts.length +
-        (conflicts.length === 1 ? " conflict" : " conflicts");
+        conflicts.length + (conflicts.length === 1 ? " conflict" : " conflicts");
 
     if (conflicts.length === 0) {
         const li = document.createElement("li");
@@ -261,11 +281,11 @@ function updateConflictList() {
         return;
     }
 
-    conflicts.forEach(function (conflict, index) {
+    conflicts.forEach(function (conflict) {
         const li = document.createElement("li");
 
         const description = document.createElement("span");
-        description.textContent = conflict[0] + " ↔ " + conflict[1];
+        description.textContent = conflict.subject1 + " ↔ " + conflict.subject2;
 
         const removeButton = document.createElement("button");
         removeButton.type = "button";
@@ -273,13 +293,7 @@ function updateConflictList() {
         removeButton.textContent = "Remove";
 
         removeButton.addEventListener("click", function () {
-            conflicts.splice(index, 1);
-
-            updateConflictList();
-            drawGraph();
-            clearTimetable();
-
-            showMessage("Conflict removed.");
+            removeConflict(conflict._id);
         });
 
         li.append(description, removeButton);
@@ -287,19 +301,39 @@ function updateConflictList() {
     });
 }
 
+async function removeConflict(id) {
+    try {
+        const response = await fetch(`/api/conflicts/${id}`, {
+            method: "DELETE"
+        });
+
+        if (!response.ok) {
+            showMessage("Failed to remove conflict.", "error");
+            return;
+        }
+
+        await loadDataFromDatabase();
+        clearTimetable();
+        showMessage("Conflict removed.");
+    } catch (error) {
+        showMessage("Server error while deleting conflict.", "error");
+    }
+}
+
 // ========================================
-// 11. BUILD THE GRAPH
+// 12. BUILD THE GRAPH
 // ========================================
 
 function buildGraph() {
     const adjacency = new Map();
 
     subjects.forEach(function (subject) {
-        adjacency.set(subject, []);
+        adjacency.set(subject.name, []);
     });
 
     conflicts.forEach(function (conflict) {
-        const [first, second] = conflict;
+        const first = conflict.subject1;
+        const second = conflict.subject2;
 
         if (adjacency.has(first) && adjacency.has(second)) {
             adjacency.get(first).push(second);
@@ -311,72 +345,62 @@ function buildGraph() {
 }
 
 // ========================================
-// 12. DRAW THE CONFLICT GRAPH
+// 13. DRAW THE CONFLICT GRAPH
 // ========================================
 
 function drawGraph() {
     graph.replaceChildren();
 
     const namespace = "http://www.w3.org/2000/svg";
-
     const width = 700;
     const height = 380;
 
     if (subjects.length === 0) {
         const text = document.createElementNS(namespace, "text");
-
         text.setAttribute("x", width / 2);
         text.setAttribute("y", height / 2);
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("fill", "#64748b");
         text.textContent = "Add subjects to display the graph";
-
         graph.appendChild(text);
         return;
     }
 
     const centerX = width / 2;
     const centerY = height / 2;
-
     const radius = Math.min(125, 45 + subjects.length * 9);
     const nodeRadius = subjects.length > 20 ? 17 : 23;
 
     const positions = new Map();
 
     subjects.forEach(function (subject, index) {
-        const angle =
-            -Math.PI / 2 + (2 * Math.PI * index) / subjects.length;
-
-        positions.set(subject, {
+        const angle = -Math.PI / 2 + (2 * Math.PI * index) / subjects.length;
+        positions.set(subject.name, {
             x: centerX + radius * Math.cos(angle),
             y: centerY + radius * Math.sin(angle)
         });
     });
 
     conflicts.forEach(function (conflict) {
-        const first = positions.get(conflict[0]);
-        const second = positions.get(conflict[1]);
+        const first = positions.get(conflict.subject1);
+        const second = positions.get(conflict.subject2);
 
-        if (!first || !second) {
-            return;
-        }
+        if (!first || !second) return;
 
         const line = document.createElementNS(namespace, "line");
-
         line.setAttribute("x1", first.x);
         line.setAttribute("y1", first.y);
         line.setAttribute("x2", second.x);
         line.setAttribute("y2", second.y);
         line.setAttribute("class", "graph-edge");
-
         graph.appendChild(line);
     });
 
     subjects.forEach(function (subject, index) {
-        const position = positions.get(subject);
+        const position = positions.get(subject.name);
+        if (!position) return;
 
         const circle = document.createElementNS(namespace, "circle");
-
         circle.setAttribute("cx", position.x);
         circle.setAttribute("cy", position.y);
         circle.setAttribute("r", nodeRadius);
@@ -384,60 +408,56 @@ function drawGraph() {
         circle.setAttribute("class", "graph-node");
 
         const title = document.createElementNS(namespace, "title");
-        title.textContent = subject;
+        title.textContent = subject.name;
 
         circle.appendChild(title);
         graph.appendChild(circle);
 
         const label = document.createElementNS(namespace, "text");
-
         label.setAttribute("x", position.x);
         label.setAttribute("y", position.y);
         label.setAttribute("class", "graph-label");
 
-        let displayName = subject;
-
+        let displayName = subject.name;
         if (displayName.length > 12) {
             displayName = displayName.slice(0, 11) + "…";
         }
-
         label.textContent = displayName;
-
         graph.appendChild(label);
     });
 }
 
 // ========================================
-// 13. GREEDY GRAPH COLORING ALGORITHM
+// 14. GREEDY GRAPH COLORING ALGORITHM
 // ========================================
 
 function greedyColoring() {
     const adjacency = buildGraph();
     const assignedColors = new Map();
 
-    for (const subject of subjects) {
+    subjects.forEach(function (subject) {
         const unavailableColors = new Set();
+        const neighbors = adjacency.get(subject.name) || [];
 
-        for (const neighbor of adjacency.get(subject)) {
+        for (const neighbor of neighbors) {
             if (assignedColors.has(neighbor)) {
                 unavailableColors.add(assignedColors.get(neighbor));
             }
         }
 
         let color = 0;
-
         while (unavailableColors.has(color)) {
             color++;
         }
 
-        assignedColors.set(subject, color);
-    }
+        assignedColors.set(subject.name, color);
+    });
 
     return assignedColors;
 }
 
 // ========================================
-// 14. GENERATE TIMETABLE
+// 15. GENERATE TIMETABLE
 // ========================================
 
 generateBtn.addEventListener("click", function () {
@@ -448,26 +468,22 @@ generateBtn.addEventListener("click", function () {
     }
 
     const colors = greedyColoring();
-
     displayTimetable(colors);
     showMessage("Timetable generated successfully!");
 });
 
 // ========================================
-// 15. FORMAT TIME
+// 16. FORMAT TIME
 // ========================================
 
 function formatTime(totalMinutes) {
     const minutesInDay = 24 * 60;
-
-    totalMinutes =
-        ((totalMinutes % minutesInDay) + minutesInDay) % minutesInDay;
+    totalMinutes = ((totalMinutes % minutesInDay) + minutesInDay) % minutesInDay;
 
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
 
     const date = new Date(2000, 0, 1, hours, minutes);
-
     return date.toLocaleTimeString("en-US", {
         hour: "2-digit",
         minute: "2-digit",
@@ -476,25 +492,22 @@ function formatTime(totalMinutes) {
 }
 
 // ========================================
-// 16. DISPLAY GENERATED TIMETABLE
+// 17. DISPLAY GENERATED TIMETABLE
 // ========================================
 
 function displayTimetable(colors) {
     clearTimetable();
-
     latestColors = colors;
 
-    const numberOfPeriods =
-        Math.max(...Array.from(colors.values())) + 1;
-
+    const numberOfPeriods = Math.max(...Array.from(colors.values())) + 1;
     const groupedSubjects = new Map();
 
     for (let i = 0; i < numberOfPeriods; i++) {
         groupedSubjects.set(i, []);
     }
 
-    colors.forEach(function (period, subject) {
-        groupedSubjects.get(period).push(subject);
+    colors.forEach(function (period, subjectName) {
+        groupedSubjects.get(period).push(subjectName);
     });
 
     let startParts = periodStart.value.split(":").map(Number);
@@ -508,34 +521,24 @@ function displayTimetable(colors) {
         card.className = "period-card";
 
         const title = document.createElement("h3");
-        title.style.setProperty(
-            "--period-color",
-            COLORS[period % COLORS.length]
-        );
-
+        title.style.setProperty("--period-color", COLORS[period % COLORS.length]);
         title.textContent = "Period " + (period + 1);
 
-        card.style.setProperty(
-            "--period-color",
-            COLORS[period % COLORS.length]
-        );
+        card.style.setProperty("--period-color", COLORS[period % COLORS.length]);
 
         const startTime = startMinutes + period * (duration + breakMinutes);
         const endTime = startTime + duration;
 
         const time = document.createElement("div");
         time.className = "period-time";
-        time.textContent =
-            formatTime(startTime) + " – " + formatTime(endTime);
+        time.textContent = formatTime(startTime) + " – " + formatTime(endTime);
 
         card.append(title, time);
 
-        groupedSubjects.get(period).forEach(function (subject) {
+        groupedSubjects.get(period).forEach(function (subjectName) {
             const chip = document.createElement("span");
-
             chip.className = "subject-chip";
-            chip.textContent = subject;
-
+            chip.textContent = subjectName;
             card.appendChild(chip);
         });
 
@@ -546,7 +549,7 @@ function displayTimetable(colors) {
 }
 
 // ========================================
-// 17. DISPLAY TIMETABLE SUMMARY
+// 18. DISPLAY TIMETABLE SUMMARY
 // ========================================
 
 function displaySummary(colors, numberOfPeriods) {
@@ -579,7 +582,6 @@ function displaySummary(colors, numberOfPeriods) {
     });
 
     const explanation = document.createElement("p");
-
     explanation.className = "note";
     explanation.textContent =
         "The Greedy Coloring algorithm assigned " +
@@ -592,65 +594,83 @@ function displaySummary(colors, numberOfPeriods) {
 }
 
 // ========================================
-// 18. LOAD SAMPLE DATA
+// 19. LOAD SAMPLE DATA BUTTON
 // ========================================
 
-sampleBtn.addEventListener("click", function () {
-    subjects = [
-        "Mathematics",
-        "DBMS",
-        "Operating Systems",
-        "Python"
-    ];
+sampleBtn.addEventListener("click", async function () {
+    try {
+        // Post sample subjects and conflicts to the database via API
+        const sampleSubjects = ["Mathematics", "DBMS", "Operating Systems", "Python"];
+        
+        for (const name of sampleSubjects) {
+            await fetch("/api/subjects", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name })
+            });
+        }
 
-    conflicts = [
-        ["Mathematics", "DBMS"],
-        ["Mathematics", "Python"],
-        ["DBMS", "Operating Systems"],
-        ["Operating Systems", "Python"]
-    ];
+        await loadDataFromDatabase();
 
-    updateSubjectList();
-    updateDropdowns();
-    updateConflictList();
-    drawGraph();
-    clearTimetable();
+        // Find IDs to add sample conflicts
+        const m = subjects.find(s => s.name === "Mathematics")?._id;
+        const d = subjects.find(s => s.name === "DBMS")?._id;
+        const o = subjects.find(s => s.name === "Operating Systems")?._id;
+        const p = subjects.find(s => s.name === "Python")?._id;
 
-    showMessage(
-        "Sample data loaded. Click Generate Timetable to see the result."
-    );
-});
+        if (m && d && o && p) {
+            const pairs = [
+                [m, d],
+                [m, p],
+                [d, o],
+                [o, p]
+            ];
+            for (const pair of pairs) {
+                await fetch("/api/conflicts", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ subject1: pair[0], subject2: pair[1] })
+                });
+            }
+        }
 
-// ========================================
-// 19. RESET THE PROJECT
-// ========================================
-
-resetBtn.addEventListener("click", function () {
-    const confirmed = window.confirm(
-        "Are you sure you want to remove all subjects and conflicts?"
-    );
-
-    if (!confirmed) {
-        return;
+        await loadDataFromDatabase();
+        clearTimetable();
+        showMessage("Sample data loaded and saved to database successfully!");
+    } catch (err) {
+        showMessage("Error loading sample data.", "error");
     }
-
-    subjects = [];
-    conflicts = [];
-
-    updateSubjectList();
-    updateDropdowns();
-    updateConflictList();
-    drawGraph();
-    clearTimetable();
-
-    showMessage("Project reset successfully.");
 });
 
 // ========================================
-// 20. INITIALIZE THE PAGE
+// 20. RESET PROJECT BUTTON
 // ========================================
 
-updateSubjectList();
-updateDropdowns();
-updateConflictList();
-drawGraph();
+resetBtn.addEventListener("click", async function () {
+    const confirmed = window.confirm(
+        "Are you sure you want to remove all subjects and conflicts from the database?"
+    );
+
+    if (!confirmed) return;
+
+    try {
+        // Delete all current subjects (which cascade-deletes conflicts in backend)
+        for (const subject of subjects) {
+            await fetch(`/api/subjects/${subject._id}`, {
+                method: "DELETE"
+            });
+        }
+
+        await loadDataFromDatabase();
+        clearTimetable();
+        showMessage("Project reset successfully.");
+    } catch (err) {
+        showMessage("Error resetting project.", "error");
+    }
+});
+
+// ========================================
+// 21. INITIALIZE PAGE ON LOAD
+// ========================================
+
+loadDataFromDatabase();
